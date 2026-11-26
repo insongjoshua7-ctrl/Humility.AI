@@ -1,78 +1,81 @@
 
 # CT PROJECT - HUMILITY.AI
+# MAIN AI ENGINE
 
 from google import genai
 from google.genai import types
+import streamlit as st
 import os
 
+# API CONFIGURATION
+api_key = os.getenv("GEMINI_API_KEY")
 
-client = genai.Client(
-    api_key=os.getenv("GEMINI_API_KEY")
-)
+if not api_key:
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        raise RuntimeError("Gemini API key not found.")
 
-# CONVERSATION HISTORY SECTION
-conversation_history = []
+client = genai.Client(api_key=api_key)
 
-def chat_with_gemini(prompt):
+MODEL = "gemini-3.5-flash-lite"
 
-    history_length = len(conversation_history)
+SYSTEM_INSTRUCTION = """
+You are Humility.AI, an AI chatbot created by its developer.
+
+Your name is Humility.AI, NOT Gemini.
+
+If someone asks for your name, introduce yourself as Humility.AI.
+
+You are helpful, respectful, friendly, and informative.
+
+Never claim that your name is Gemini.
+"""
+
+
+# AI RESPONSE FUNCTION
+def chat_with_gemini(messages):
 
     try:
 
-        # SAVE USER MESSAGE
-        conversation_history.append(
-            types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=prompt)]
-            )
-        )
+        # CONVERT CHAT HISTORY
+        conversation = []
 
-        # GENERATE AI RESPONSE
-        response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
-            contents=conversation_history
-        )
+        for message in messages:
 
-        if response.text:
+            role = message["role"]
 
-            bot_reply = response.text.strip()
+            if role == "assistant":
+                role = "model"
 
-            # SAVE AI RESPONSE
-            conversation_history.append(
+            conversation.append(
                 types.Content(
-                    role="model",
-                    parts=[types.Part.from_text(text=bot_reply)]
+                    role=role,
+                    parts=[
+                        types.Part.from_text(
+                            text=message["content"]
+                        )
+                    ]
                 )
             )
 
-            return bot_reply
+        # GENERATE RESPONSE
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=conversation,
+            config={
+                "system_instruction": SYSTEM_INSTRUCTION
+            }
+        )
 
-        else:
-            conversation_history.pop()
-            return "Sorry, I am unable to generate a response."
+        if response.text:
+            return response.text.strip()
 
-    # ERROR HANDLING SECTION
+        return "Sorry, I am unable to generate a response."
+
     except Exception as e:
 
         print("ERROR TYPE:", type(e).__name__)
         print("ERROR DETAILS:", repr(e))
 
-        del conversation_history[history_length:]
-
         return "Sorry, something went wrong. Please try again."
-
-
-# MAIN FUNCTION
-if __name__ == "__main__":
-
-    while True:
-
-        user_input = input("You: ")
-
-        if user_input.lower() in ["quit", "exit", "bye"]:
-            print("Humility.AI: Goodbye!")
-            break
-
-        response = chat_with_gemini(user_input)
-
-        print("Humility.AI:", response)
